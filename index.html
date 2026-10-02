@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Miniature Maker</title>
+<style>
+  :root {
+    --bg: #17181b; --panel: #222429; --panel2: #2b2e34; --line: #3a3e46;
+    --text: #e8e6e3; --muted: #9a9ea6; --accent: #e07a1f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header h1 span { font-family: "DisplayArtThree", serif; color: var(--accent); font-weight: normal; font-size: 22px; letter-spacing: 1px; }
+  header .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 300px 1fr 300px; gap: 16px; padding: 16px; align-items: start; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .panel h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .panel + .panel { margin-top: 14px; }
+  label.row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; margin: 8px 0; }
+  label.row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+  label.row .val { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  [hidden] { display: none !important; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 8px; font: inherit;
+  }
+  input[type=color] { width: 100%; height: 34px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+  #text { font-family: "DisplayArtThree", serif; font-size: 20px; letter-spacing: 1px; resize: vertical; line-height: 1.1; }
+  .check { display: flex; align-items: center; gap: 8px; margin: 8px 0; cursor: pointer; }
+  .check input { accent-color: var(--accent); }
+  button, .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+    padding: 8px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover, .btn:hover { border-color: #555b66; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1209; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .btns.full button { flex: 1; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #editorWrap { position: relative; border-radius: 10px; overflow: hidden; background: #0e0f11; border: 1px solid var(--line); }
+  #editor { display: block; cursor: grab; touch-action: none; }
+  #editor.dragging { cursor: grabbing; }
+  #dropHint {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; color: var(--muted); text-align: center; padding: 20px; pointer-events: none;
+  }
+  #dropHint strong { color: var(--text); font-size: 16px; }
+  #editorWrap.over { outline: 2px dashed var(--accent); outline-offset: -6px; }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; }
+
+  #previewBox { display: flex; justify-content: center; padding: 10px; background: #fff; border-radius: 8px; }
+  #preview { display: block; max-width: 100%; }
+
+  .addrow { display: flex; gap: 8px; }
+  .addrow button { flex: 1; }
+  .qty { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+  .qty input, #sheetList input { width: 58px; text-align: center; }
+  #sheetList { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
+  #sheetList .item { display: flex; align-items: center; gap: 10px; background: var(--panel2); border-radius: 6px; padding: 5px 6px; }
+  #sheetList img { display: block; width: 18px; background: #fff; flex: none; }
+  #sheetList .info { flex: 1; min-width: 0; }
+  #sheetList .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sheetList .item button { width: 26px; height: 26px; padding: 0; flex: none; }
+  .muted { color: var(--muted); font-size: 12px; }
+
+  .credits { padding: 4px 20px 16px; text-align: center; color: var(--muted); font-size: 11px; }
+  .credits a { color: var(--muted); }
+  #printArea { display: none; }
+  @media print {
+    @page { size: A4 portrait; margin: 0; }
+    body { background: #fff; }
+    body > *:not(#printArea) { display: none !important; }
+    #printArea { display: block; }
+    #printArea .page { width: 210mm; height: 296mm; overflow: hidden; break-after: page; }
+    #printArea .page:last-child { break-after: auto; }
+    #printArea img { display: block; width: 210mm; height: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Miniature</span> Maker</h1>
+  <div class="spacer"></div>
+  <label class="btn" for="file">Carica immagine…</label>
+  <input id="file" type="file" accept="image/*" hidden>
+</header>
+
+<main>
+  <!-- Left: text + image -->
+  <section>
+    <div class="panel">
+      <h2>Testo</h2>
+      <textarea id="text" rows="2" placeholder="Nome"></textarea>
+      <div class="muted">Premi Invio per andare a capo</div>
+      <label class="check"><input id="uppercase" type="checkbox" checked> Tutto maiuscolo</label>
+      <label class="row">Dimensione <span class="val" id="textSizeVal"></span>
+        <input id="textSize" type="range" min="5" max="60" step="0.5"></label>
+      <label class="check"><input id="autoFit" type="checkbox" checked> Riduci per stare nel box</label>
+      <label class="check"><input id="autoWrap" type="checkbox" checked> A capo automatico se troppo lungo</label>
+      <label class="row">Interlinea <span class="val" id="lineHeightVal"></span>
+        <input id="lineHeight" type="range" min="60" max="160" step="1"></label>
+      <label class="row">Posizione verticale <span class="val" id="textYVal"></span>
+        <input id="textY" type="range" min="0" max="100" step="0.5"></label>
+      <label class="row">Spaziatura lettere <span class="val" id="letterSpacingVal"></span>
+        <input id="letterSpacing" type="range" min="-5" max="30" step="0.5"></label>
+      <div class="grid2">
+        <div class="field">Colore testo <input id="textColor" type="color"></div>
+        <div class="field">Colore contorno <input id="strokeColor" type="color"></div>
+      </div>
+      <label class="row">Spessore contorno <span class="val" id="strokeVal"></span>
+        <input id="stroke" type="range" min="0" max="20" step="0.5"></label>
+      <label class="check"><input id="textOnTop" type="checkbox"> Testo anche nel box sopra</label>
+    </div>
+
+    <div class="panel">
+      <h2>Bianco e nero (box sotto)</h2>
+      <label class="row">Contrasto <span class="val" id="contrastVal"></span>
+        <input id="contrast" type="range" min="0.5" max="2" step="0.05"></label>
+      <label class="row">Luminosità <span class="val" id="brightnessVal"></span>
+        <input id="brightness" type="range" min="-80" max="80" step="1"></label>
+    </div>
+
+    <div class="panel">
+      <h2>Cornice</h2>
+      <select id="frameStyle">
+        <option value="black">Nera semplice</option>
+        <option value="gold">Fantasy · oro</option>
+        <option value="silver">Fantasy · argento</option>
+        <option value="bronze">Fantasy · bronzo</option>
+      </select>
+      <div class="grid2" style="margin-top: 8px;">
+        <div class="field" data-frame="black">Bordo (mm) <input id="border" type="number" min="0" max="10" step="0.1"></div>
+        <div class="field" data-frame="black">Colore <input id="frameColor" type="color"></div>
+        <div class="field" data-frame="fantasy">Spessore (mm) <input id="fantasyBorder" type="number" min="1" max="10" step="0.1"></div>
+        <div class="field" data-frame="fantasy">Colore gemme <input id="gemColor" type="color"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Center: crop editor -->
+  <section class="stage">
+    <div id="editorWrap">
+      <canvas id="editor"></canvas>
+      <div id="dropHint">
+        <strong>Trascina qui un'immagine</strong>
+        <span>oppure usa “Carica immagine…” o incolla con Ctrl+V</span>
+      </div>
+    </div>
+    <div class="hint">Trascina per spostare · rotella per lo zoom · la zona chiara è quella che finisce nel box</div>
+    <div class="panel" style="width: 100%; max-width: 460px;">
+      <label class="row">Zoom <span class="val" id="zoomVal"></span>
+        <input id="zoom" type="range" min="0.2" max="6" step="0.01" value="1"></label>
+      <label class="check"><input id="clamp" type="checkbox" checked> Riempi sempre il box (niente bordi vuoti)</label>
+      <div class="btns full">
+        <button id="resetCrop" disabled>Centra</button>
+        <button id="fitCrop" disabled>Adatta intera</button>
+        <button id="flipCrop" disabled>Specchia</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right: preview + export -->
+  <section>
+    <div class="panel">
+      <h2>Anteprima</h2>
+      <div id="previewBox"><canvas id="preview"></canvas></div>
+      <div class="btns full">
+        <button id="download" class="primary" disabled>Scarica PNG</button>
+      </div>
+      <div class="btns addrow">
+        <button id="addSheet" disabled>Aggiungi al foglio A4</button>
+        <label class="qty" title="Numero di copie">× <input id="sheetQty" type="number" min="1" max="500" value="1"></label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Foglio A4 <span class="muted" id="sheetCount"></span></h2>
+      <label class="btn" for="sheetFiles" style="width: 100%;">Aggiungi miniature salvate…</label>
+      <input id="sheetFiles" type="file" accept="image/*" multiple hidden>
+      <div id="sheetList"></div>
+      <div class="btns full">
+        <button id="sheetDownload" disabled>PNG fogli</button>
+        <button id="sheetPrint" disabled>Stampa</button>
+        <button id="sheetClear" disabled>Svuota</button>
+      </div>
+      <p class="muted">In stampa scegli “Scala: 100%” (o “Dimensioni effettive”) e margini “Nessuno”, altrimenti la stampante rimpicciolisce le miniature.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Formato</h2>
+      <div class="grid2">
+        <div class="field">Larghezza faccia (mm) <input id="boxW" type="number" min="5" max="200" step="0.5"></div>
+        <div class="field">Altezza faccia (mm) <input id="boxH" type="number" min="5" max="200" step="0.5"></div>
+        <div class="field">Linea centrale (mm) <input id="gap" type="number" min="0" max="20" step="0.1"></div>
+        <div class="field">Risoluzione (DPI)
+          <select id="dpi"><option>150</option><option>300</option><option>600</option></select></div>
+      </div>
+      <div class="btns full"><button id="resetSettings">Ripristina predefiniti</button></div>
+    </div>
+  </section>
+</main>
+
+<footer class="credits">
+  Font Display Art Three da <a href="https://www.onlinewebfonts.com" target="_blank" rel="noopener">Online Web Fonts</a>,
+  licenza <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> ·
+  Icons made from <a href="https://www.onlinewebfonts.com/icon" target="_blank" rel="noopener">svg icons</a> is licensed by CC BY 4.0
+</footer>
+
+<div id="printArea"></div>
+
+<script src="font-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
