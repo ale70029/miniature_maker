@@ -4,7 +4,8 @@
 const DEFAULTS = {
   text: '', uppercase: true, textSize: 24, autoFit: true, autoWrap: true, lineHeight: 95, textY: 45, letterSpacing: 2,
   textColor: '#e07a1f', strokeColor: '#2a1606', stroke: 6, textOnTop: false,
-  contrast: 1.1, brightness: 0,
+  nameBg: 'parchment',
+  contrast: 1.1, brightness: 25,
   boxW: 25, boxH: 50, border: 0.6, gap: 1.6, frameColor: '#000000', dpi: 300,
   frameStyle: 'black', fantasyBorder: 2.4, gemColor: '#b3122a',
 };
@@ -13,6 +14,8 @@ const STORE_KEY = 'miniature-maker-settings';
 
 let S = { ...DEFAULTS };
 try { Object.assign(S, JSON.parse(localStorage.getItem(STORE_KEY) || '{}')); } catch (_) {}
+// v2: brighter default B/W. Lift settings saved with the old default.
+if (!S.version) { if (S.brightness === 0) S.brightness = DEFAULTS.brightness; S.version = 2; }
 const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (_) {} };
 
 // Crop state: image center relative to the box (fractions of box w/h) and zoom relative to "cover".
@@ -101,32 +104,117 @@ function wrapParagraph(ctx, para, maxW) {
   return lines;
 }
 
+// Small deterministic PRNG so the parchment stains are identical in preview and export.
+function rng(seed) {
+  return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+}
+
+// Scroll banner centred on (cx, cy): wavy parchment sheet with rolled ends.
+function drawParchment(ctx, cx, cy, pw, ph) {
+  const roll = Math.min(ph * 0.26, pw * 0.12);
+  const x0 = cx - pw / 2 + roll * 0.6, x1 = cx + pw / 2 - roll * 0.6;
+  const top = cy - ph / 2, bot = cy + ph / 2;
+  const amp = ph * 0.035, waves = 2;
+  const edge = (y, dir) => (t) => y + dir * amp * Math.sin(t * Math.PI * 2 * waves);
+
+  const body = new Path2D();
+  const steps = 24;
+  const topY = edge(top, 1), botY = edge(bot, -1);
+  body.moveTo(x0, topY(0));
+  for (let i = 1; i <= steps; i++) body.lineTo(x0 + (x1 - x0) * i / steps, topY(i / steps));
+  for (let i = steps; i >= 0; i--) body.lineTo(x0 + (x1 - x0) * i / steps, botY(i / steps));
+  body.closePath();
+
+  ctx.save();
+  // Drop shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = ph * 0.18;
+  ctx.shadowOffsetY = ph * 0.05;
+  ctx.fillStyle = '#d9bf86';
+  ctx.fill(body);
+  ctx.restore();
+
+  // Paper tone: light centre, darker burnt edges
+  ctx.save();
+  ctx.clip(body);
+  const gr = ctx.createRadialGradient(cx, cy, ph * 0.1, cx, cy, Math.max(pw, ph) * 0.62);
+  gr.addColorStop(0, '#f6e8c3');
+  gr.addColorStop(0.6, '#e6cf98');
+  gr.addColorStop(1, '#b48a4c');
+  ctx.fillStyle = gr;
+  ctx.fillRect(cx - pw / 2, top - amp * 2, pw, ph + amp * 4);
+  // Stains
+  const r = rng(7);
+  for (let i = 0; i < 9; i++) {
+    const sx = x0 + r() * (x1 - x0), sy = top + r() * ph, sr = ph * (0.08 + r() * 0.2);
+    const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+    sg.addColorStop(0, 'rgba(120,80,30,0.16)');
+    sg.addColorStop(1, 'rgba(120,80,30,0)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+  }
+  ctx.restore();
+  ctx.lineWidth = Math.max(1, ph * 0.025);
+  ctx.strokeStyle = '#6b4a22';
+  ctx.stroke(body);
+
+  // Rolled ends
+  for (const ex of [x0, x1]) {
+    const rx = ex - roll / 2, ry = top - ph * 0.06, rh = ph * 1.12;
+    const rg = ctx.createLinearGradient(rx, 0, rx + roll, 0);
+    rg.addColorStop(0, '#8a6430');
+    rg.addColorStop(0.35, '#f1dfb2');
+    rg.addColorStop(0.7, '#c9a464');
+    rg.addColorStop(1, '#6e4c22');
+    ctx.beginPath();
+    ctx.roundRect(rx, ry, roll, rh, roll / 2);
+    ctx.fillStyle = rg;
+    ctx.fill();
+    ctx.stroke();
+    // Spiral hint at the curl
+    ctx.beginPath();
+    ctx.ellipse(ex, ry + roll * 0.5, roll * 0.22, roll * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(ex, ry + rh - roll * 0.5, roll * 0.22, roll * 0.16, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#6b4a22';
+    ctx.fill();
+  }
+}
+
 function drawText(ctx, w, h) {
   let text = S.text.trim();
   if (!text) return;
   if (S.uppercase) text = text.toUpperCase();
   const paragraphs = text.split(/\r?\n/).map((p) => p.trim());
   const lh = S.lineHeight / 100;
+  const scroll = S.nameBg === 'parchment';
   let size = (S.textSize / 100) * w;
-  let lines, lw;
+  let lines, lw, widest, blockH, padX, padY;
   // Shrink (if enabled) until every line fits the width and the block fits the height.
   for (let i = 0; i < 60; i++) {
     ctx.font = `${size}px "${FONT}"`;
     if ('letterSpacing' in ctx) ctx.letterSpacing = `${(S.letterSpacing / 100) * size}px`;
     lw = (S.stroke / 100) * size;
-    const maxW = w * 0.94 - 2 * lw;
+    padX = scroll ? size * 0.42 : 0;
+    padY = scroll ? size * 0.28 : 0;
+    const maxW = (scroll ? w * 0.98 - 2 * padX : w * 0.94) - 2 * lw;
     lines = S.autoWrap ? paragraphs.flatMap((p) => wrapParagraph(ctx, p, maxW)) : paragraphs;
+    widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    blockH = (lines.length - 1) * size * lh + size + 2 * lw;
     if (!S.autoFit) break;
-    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-    const blockH = (lines.length - 1) * size * lh + size + 2 * lw;
-    if (widest <= maxW && blockH <= h * 0.94) break;
+    if (widest <= maxW && blockH + 2 * padY <= h * 0.94) break;
     size *= 0.95;
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const x = w / 2;
   const step = size * lh;
-  const y0 = (S.textY / 100) * h - ((lines.length - 1) * step) / 2;
+  const cy = (S.textY / 100) * h;
+  const y0 = cy - ((lines.length - 1) * step) / 2;
+  // The parchment is sized and placed from the text block, so it follows the name.
+  if (scroll) {
+    const pw = Math.min(w * 0.98, widest + 2 * lw + 2 * padX);
+    drawParchment(ctx, x, cy, pw, blockH + 2 * padY);
+  }
   // Strokes first, then fills, so a line's outline never covers the line above.
   if (lw > 0) {
     ctx.lineJoin = 'round';
@@ -156,6 +244,11 @@ const FANTASY = {
   silver: { dark: '#24282e', mid: '#8e98a3', light: '#f4f7fa' },
   bronze: { dark: '#331a0a', mid: '#94542a', light: '#e8ae78' },
 };
+const WOOD = {
+  wood:  { dark: '#2a1407', base: '#6e3f1c', light: '#9c6534', grain: '40,18,4' },
+  oak:   { dark: '#4d3114', base: '#a5773f', light: '#d2a86a', grain: '90,55,20' },
+};
+const frameDark = () => (FANTASY[S.frameStyle] || WOOD[S.frameStyle]).dark;
 const isFantasy = () => S.frameStyle !== 'black';
 
 // Card layout in mm. Each face is exactly boxW × boxH, frame included, so the
@@ -222,6 +315,120 @@ function bevel(ctx, o, i, light, dark) {
   }
 }
 
+// Soft shadow cast by a frame onto the picture (x, y, w, h).
+function frameShadow(ctx, x, y, w, h, t) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = t * 0.8;
+  ctx.lineWidth = t; ctx.strokeStyle = '#000';
+  ctx.strokeRect(x - t / 2, y - t / 2, w + t, h + t);
+  ctx.restore();
+}
+
+function drawFrame(ctx, x, y, w, h, t) {
+  if (WOOD[S.frameStyle]) drawWoodFrame(ctx, x, y, w, h, t);
+  else drawFantasyFrame(ctx, x, y, w, h, t);
+}
+
+// Mitred wooden frame: four planks with grain along their length and a rounded profile.
+function drawWoodFrame(ctx, x, y, w, h, t) {
+  const p = WOOD[S.frameStyle];
+  const ox = x - t, oy = y - t, ow = w + 2 * t, oh = h + 2 * t;
+  ctx.save();
+  frameShadow(ctx, x, y, w, h, t);
+
+  // Each plank in local coords: x along its length (len), y from outer edge (0) to inner edge (t).
+  const planks = [
+    { tx: ox, ty: oy, rot: 0, len: ow },                      // top
+    { tx: ox + ow, ty: oy, rot: Math.PI / 2, len: oh },       // right
+    { tx: ox + ow, ty: oy + oh, rot: Math.PI, len: ow },      // bottom
+    { tx: ox, ty: oy + oh, rot: -Math.PI / 2, len: oh },      // left
+  ];
+  const r = rng(11);
+  for (const pl of planks) {
+    ctx.save();
+    ctx.translate(pl.tx, pl.ty);
+    ctx.rotate(pl.rot);
+    const L = pl.len;
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(L, 0); ctx.lineTo(L - t, t); ctx.lineTo(t, t); ctx.closePath();
+    ctx.clip();
+
+    // Rounded profile across the plank
+    const gr = ctx.createLinearGradient(0, 0, 0, t);
+    gr.addColorStop(0, p.dark);
+    gr.addColorStop(0.18, p.light);
+    gr.addColorStop(0.5, p.base);
+    gr.addColorStop(0.8, p.light);
+    gr.addColorStop(1, p.dark);
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, L, t);
+
+    // Grain: wavy lines along the length
+    const lines = 9;
+    for (let i = 0; i < lines; i++) {
+      const gy = t * (i + 0.3 + r() * 0.4) / lines;
+      const a1 = t * (0.03 + r() * 0.05), f1 = (2 + r() * 3) / L * Math.PI * 2, ph1 = r() * 6.3;
+      const a2 = t * 0.02, f2 = (9 + r() * 8) / L * Math.PI * 2, ph2 = r() * 6.3;
+      ctx.beginPath();
+      for (let s = 0; s <= 60; s++) {
+        const gx = L * s / 60;
+        const yy = gy + a1 * Math.sin(gx * f1 + ph1) + a2 * Math.sin(gx * f2 + ph2);
+        s ? ctx.lineTo(gx, yy) : ctx.moveTo(gx, yy);
+      }
+      ctx.lineWidth = t * (0.025 + r() * 0.04);
+      ctx.strokeStyle = `rgba(${p.grain},${0.25 + r() * 0.3})`;
+      ctx.stroke();
+    }
+
+    // A knot on the long planks
+    if (L > t * 8) {
+      const kx = L * (0.25 + r() * 0.5), ky = t * (0.35 + r() * 0.3);
+      for (let k = 4; k >= 1; k--) {
+        ctx.beginPath();
+        ctx.ellipse(kx, ky, t * 0.13 * k * 0.6, t * 0.05 * k * 0.6, 0, 0, Math.PI * 2);
+        ctx.lineWidth = t * 0.025;
+        ctx.strokeStyle = `rgba(${p.grain},0.5)`;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.ellipse(kx, ky, t * 0.07, t * 0.03, 0, 0, Math.PI * 2);
+      ctx.fillStyle = p.dark;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Light from top-left
+  bevel(ctx, { x: ox, y: oy, w: ow, h: oh }, { x, y, w, h }, 'rgba(255,240,210,0.12)', 'rgba(0,0,0,0.22)');
+
+  // Mitre joints, edges and the inner lip
+  ctx.lineWidth = t * 0.05;
+  ctx.strokeStyle = 'rgba(20,8,0,0.75)';
+  ctx.beginPath();
+  for (const [cx, cy, ix, iy] of [[ox, oy, x, y], [ox + ow, oy, x + w, y], [ox + ow, oy + oh, x + w, y + h], [ox, oy + oh, x, y + h]]) {
+    ctx.moveTo(cx, cy); ctx.lineTo(ix, iy);
+  }
+  ctx.stroke();
+  ctx.lineWidth = t * 0.08;
+  ctx.strokeStyle = p.dark;
+  ctx.strokeRect(ox + t * 0.04, oy + t * 0.04, ow - t * 0.08, oh - t * 0.08);
+  ctx.lineWidth = t * 0.1;
+  ctx.strokeRect(x - t * 0.05, y - t * 0.05, w + t * 0.1, h + t * 0.1);
+
+  // Wooden pegs on the joints
+  for (const [cx, cy] of [[ox + t * 0.5, oy + t * 0.5], [ox + ow - t * 0.5, oy + t * 0.5],
+                          [ox + t * 0.5, oy + oh - t * 0.5], [ox + ow - t * 0.5, oy + oh - t * 0.5]]) {
+    const pr = t * 0.14;
+    const pg = ctx.createRadialGradient(cx - pr * 0.3, cy - pr * 0.3, pr * 0.1, cx, cy, pr);
+    pg.addColorStop(0, p.light); pg.addColorStop(1, p.dark);
+    ctx.beginPath(); ctx.arc(cx, cy, pr, 0, Math.PI * 2);
+    ctx.fillStyle = pg; ctx.fill();
+    ctx.lineWidth = pr * 0.25; ctx.strokeStyle = 'rgba(20,8,0,0.8)'; ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // Ornate frame of thickness t around the box (x, y, w, h). Drawn after the image.
 function drawFantasyFrame(ctx, x, y, w, h, t) {
   const p = FANTASY[S.frameStyle];
@@ -229,13 +436,7 @@ function drawFantasyFrame(ctx, x, y, w, h, t) {
   const outer = rect(t), mid = rect(t * 0.5), inner = rect(0);
 
   ctx.save();
-  // Soft shadow cast by the frame onto the picture
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = t * 0.8;
-  ctx.lineWidth = t; ctx.strokeStyle = '#000';
-  ctx.strokeRect(x - t / 2, y - t / 2, w + t, h + t);
-  ctx.restore();
+  frameShadow(ctx, x, y, w, h, t);
 
   // Metal body
   bandPath(ctx, outer, inner);
@@ -297,7 +498,7 @@ function renderCard(k) {
   const card = makeCanvas(px(L.w), px(L.h));
   const t = px(L.t), bw = card.width - 2 * t, bh = px(L.top.y + L.bh) - t;
   const ctx = card.getContext('2d');
-  ctx.fillStyle = isFantasy() ? FANTASY[S.frameStyle].dark : S.frameColor;
+  ctx.fillStyle = isFantasy() ? frameDark() : S.frameColor;
   ctx.fillRect(0, 0, card.width, card.height);
 
   // Top: color, rotated 180°
@@ -307,13 +508,13 @@ function renderCard(k) {
   ctx.translate(tx + bw, ty + bh);
   ctx.rotate(Math.PI);
   ctx.drawImage(top, 0, 0);
-  if (isFantasy()) drawFantasyFrame(ctx, 0, 0, bw, bh, t);
+  if (isFantasy()) drawFrame(ctx, 0, 0, bw, bh, t);
   ctx.restore();
 
   // Bottom: black & white with text
   const bx = t, by = card.height - t - bh;
   ctx.drawImage(renderBox(bw, bh, true, true), bx, by);
-  if (isFantasy()) drawFantasyFrame(ctx, bx, by, bw, bh, t);
+  if (isFantasy()) drawFrame(ctx, bx, by, bw, bh, t);
   return card;
 }
 
@@ -683,7 +884,8 @@ function syncControls() {
 // Show only the options of the selected frame style.
 function updateFrameUI() {
   document.querySelectorAll('[data-frame]').forEach((el) => {
-    el.hidden = (el.dataset.frame === 'fantasy') !== isFantasy();
+    const f = el.dataset.frame;
+    el.hidden = f === 'black' ? isFantasy() : f === 'metal' ? !FANTASY[S.frameStyle] : !isFantasy();
   });
 }
 

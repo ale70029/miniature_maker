@@ -102,6 +102,11 @@
       <h2>Testo</h2>
       <textarea id="text" rows="2" placeholder="Nome"></textarea>
       <div class="muted">Premi Invio per andare a capo</div>
+      <div class="field" style="margin-top: 8px;">Sfondo del nome
+        <select id="nameBg">
+          <option value="parchment">Pergamena</option>
+          <option value="none">Nessuno</option>
+        </select></div>
       <label class="check"><input id="uppercase" type="checkbox" checked> Tutto maiuscolo</label>
       <label class="row">Dimensione <span class="val" id="textSizeVal"></span>
         <input id="textSize" type="range" min="5" max="60" step="0.5"></label>
@@ -137,12 +142,14 @@
         <option value="gold">Fantasy · oro</option>
         <option value="silver">Fantasy · argento</option>
         <option value="bronze">Fantasy · bronzo</option>
+        <option value="wood">Legno scuro</option>
+        <option value="oak">Legno chiaro</option>
       </select>
       <div class="grid2" style="margin-top: 8px;">
         <div class="field" data-frame="black">Bordo (mm) <input id="border" type="number" min="0" max="10" step="0.1"></div>
         <div class="field" data-frame="black">Colore <input id="frameColor" type="color"></div>
         <div class="field" data-frame="fantasy">Spessore (mm) <input id="fantasyBorder" type="number" min="1" max="10" step="0.1"></div>
-        <div class="field" data-frame="fantasy">Colore gemme <input id="gemColor" type="color"></div>
+        <div class="field" data-frame="metal">Colore gemme <input id="gemColor" type="color"></div>
       </div>
     </div>
   </section>
