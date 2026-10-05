@@ -2,12 +2,12 @@
 
 // ---------- Settings ----------
 const DEFAULTS = {
-  text: '', uppercase: true, textSize: 24, autoFit: true, autoWrap: true, lineHeight: 95, textY: 45, letterSpacing: 2,
-  textColor: '#e07a1f', strokeColor: '#2a1606', stroke: 6, textOnTop: false,
-  nameBg: 'parchment',
+  text: '', uppercase: true, textMax: true, textMaxH: 34, textSize: 24, autoFit: true, autoWrap: true, lineHeight: 95, textY: 45, letterSpacing: 2,
+  textColor: '#f08a24', strokeColor: '#2a1606', stroke: 6, textOnTop: false,
+  nameBg: 'parchment', parchTextColor: '#8b1a0a', parchStrokeColor: '#8b1a0a', parchStroke: 2.5,
   contrast: 1.1, brightness: 25,
   boxW: 25, boxH: 50, border: 0.6, gap: 1.6, frameColor: '#000000', dpi: 300,
-  frameStyle: 'black', fantasyBorder: 2.4, gemColor: '#b3122a',
+  frameStyle: 'black', fantasyBorder: 2.4, gemColor: '#c0151f',
 };
 const FONT = 'DisplayArtThree';
 const STORE_KEY = 'miniature-maker-settings';
@@ -241,34 +241,52 @@ function drawText(ctx, w, h) {
   const paragraphs = text.split(/\r?\n/).map((p) => p.trim());
   const lh = S.lineHeight / 100;
   const scroll = S.nameBg === 'parchment';
-  const target = (S.textSize / 100) * w;
-  // Shrink (if enabled) until every line fits the width and the block fits the height.
-  // With the parchment the text must stay on the flat sheet, between the two rolls.
+  const maxBlockH = h * (S.textMax ? S.textMaxH / 100 : 0.94);
+  // Plain text keeps its own colours; on the parchment a dark ink reads best.
+  const ts = scroll
+    ? { color: S.parchTextColor, strokeColor: S.parchStrokeColor, stroke: S.parchStroke }
+    : { color: S.textColor, strokeColor: S.strokeColor, stroke: S.stroke };
+  // Lays the text out at a given size. With the parchment the text must stay on the
+  // flat sheet, between the two rolls (which are capped so small cards keep their width).
+  const measure = (size, wrap) => {
+    ctx.font = `${size}px "${FONT}"`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${(S.letterSpacing / 100) * size}px`;
+    const lw = (ts.stroke / 100) * size;
+    const rollW = scroll ? Math.min(size * 0.42, w * 0.06) : 0;
+    const marginX = scroll ? Math.min(size * 0.18, w * 0.03) : 0;
+    const padY = scroll ? size * 0.22 : 0;
+    const maxW = (scroll ? w * 0.99 - 2 * rollW - 2 * marginX : w * 0.94) - 2 * lw;
+    const lines = wrap ? paragraphs.flatMap((p) => wrapParagraph(ctx, p, maxW)) : paragraphs;
+    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const blockH = (lines.length - 1) * size * lh + size + 2 * lw;
+    const totalH = scroll ? (blockH + 2 * padY) * 1.16 : blockH;
+    return { size, lw, rollW, marginX, padY, lines, widest, blockH, fits: widest <= maxW && totalH <= maxBlockH };
+  };
+  // Largest size that fits (binary search), or the chosen size shrunk until it fits.
   const fit = (wrap) => {
-    let size = target, f;
-    for (let i = 0; i < 60; i++) {
-      ctx.font = `${size}px "${FONT}"`;
-      if ('letterSpacing' in ctx) ctx.letterSpacing = `${(S.letterSpacing / 100) * size}px`;
-      const lw = (S.stroke / 100) * size;
-      const rollW = scroll ? size * 0.42 : 0, marginX = scroll ? size * 0.18 : 0, padY = scroll ? size * 0.32 : 0;
-      const maxW = (scroll ? w * 0.98 - 2 * rollW - 2 * marginX : w * 0.94) - 2 * lw;
-      const lines = wrap ? paragraphs.flatMap((p) => wrapParagraph(ctx, p, maxW)) : paragraphs;
-      const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-      const blockH = (lines.length - 1) * size * lh + size + 2 * lw;
-      f = { size, lw, rollW, marginX, padY, lines, widest, blockH };
-      if (!S.autoFit) break;
-      const totalH = scroll ? (blockH + 2 * padY) * 1.2 : blockH;
-      if (widest <= maxW && totalH <= h * 0.94) break;
-      size *= 0.95;
+    if (S.textMax) {
+      let lo = 1, hi = h, f = measure(lo, wrap);
+      for (let i = 0; i < 18; i++) {
+        const mid = (lo + hi) / 2, m = measure(mid, wrap);
+        if (m.fits) { lo = mid; f = m; } else hi = mid;
+      }
+      return f;
     }
+    let f = measure((S.textSize / 100) * w, wrap);
+    for (let i = 0; i < 60 && S.autoFit && !f.fits; i++) f = measure(f.size * 0.95, wrap);
     return f;
   };
-  // Keep the user's own line breaks when that only costs a little shrinking; wrap otherwise.
+  // Keep the user's own line breaks unless wrapping gives clearly bigger text.
   let best = fit(false);
-  if (S.autoWrap && !S.autoFit) best = fit(true);
-  else if (S.autoWrap && best.size < target * 0.75) {
-    const wrapped = fit(true);
-    if (wrapped.size > best.size) best = wrapped;
+  if (S.autoWrap) {
+    if (!S.autoFit && !S.textMax) best = fit(true);
+    else {
+      const wrapped = fit(true);
+      const better = S.textMax
+        ? wrapped.size > best.size * 1.15
+        : best.size < (S.textSize / 100) * w * 0.75 && wrapped.size > best.size;
+      if (better) best = wrapped;
+    }
   }
   const { size, lw, rollW, marginX, padY, lines, widest, blockH } = best;
   ctx.font = `${size}px "${FONT}"`;
@@ -286,10 +304,10 @@ function drawText(ctx, w, h) {
     ctx.lineJoin = 'round';
     ctx.miterLimit = 2;
     ctx.lineWidth = lw * 2;
-    ctx.strokeStyle = S.strokeColor;
+    ctx.strokeStyle = ts.strokeColor;
     lines.forEach((l, i) => ctx.strokeText(l, x, y0 + i * step));
   }
-  ctx.fillStyle = S.textColor;
+  ctx.fillStyle = ts.color;
   lines.forEach((l, i) => ctx.fillText(l, x, y0 + i * step));
 }
 
@@ -930,10 +948,10 @@ $('sheetPrint').addEventListener('click', async () => {
 
 // ---------- Controls binding ----------
 const fmt = {
-  lineHeight: (v) => v + '%', textSize: (v) => v + '%', textY: (v) => v + '%', letterSpacing: (v) => v + '%', stroke: (v) => v + '%',
+  parchStroke: (v) => v + '%', textMaxH: (v) => v + '%', lineHeight: (v) => v + '%', textSize: (v) => v + '%', textY: (v) => v + '%', letterSpacing: (v) => v + '%', stroke: (v) => v + '%',
   contrast: (v) => (+v).toFixed(2), brightness: (v) => (v > 0 ? '+' : '') + v,
 };
-const NUMERIC = new Set(['textSize', 'textY', 'letterSpacing', 'stroke', 'contrast', 'brightness', 'boxW', 'boxH', 'border', 'gap', 'dpi', 'lineHeight', 'fantasyBorder']);
+const NUMERIC = new Set(['textSize', 'textY', 'letterSpacing', 'stroke', 'contrast', 'brightness', 'boxW', 'boxH', 'border', 'gap', 'dpi', 'lineHeight', 'fantasyBorder', 'textMaxH', 'parchStroke']);
 const LAYOUT = new Set(['boxW', 'boxH', 'border', 'gap', 'fantasyBorder', 'frameStyle']);
 
 function syncControls() {
@@ -947,11 +965,17 @@ function syncControls() {
   updateFrameUI();
 }
 
-// Show only the options of the selected frame style.
+// Show only the options relevant to the current frame style and text size mode.
 function updateFrameUI() {
   document.querySelectorAll('[data-frame]').forEach((el) => {
     const f = el.dataset.frame;
     el.hidden = f === 'black' ? isFantasy() : f === 'metal' ? !FANTASY[S.frameStyle] : !isFantasy();
+  });
+  document.querySelectorAll('[data-textmax]').forEach((el) => {
+    el.hidden = (el.dataset.textmax === 'on') !== !!S.textMax;
+  });
+  document.querySelectorAll('[data-namebg]').forEach((el) => {
+    el.hidden = el.dataset.namebg !== S.nameBg;
   });
 }
 
@@ -968,7 +992,7 @@ for (const key of Object.keys(DEFAULTS)) {
     S[key] = v;
     if (fmt[key]) $(key + 'Val').textContent = fmt[key](v);
     if (LAYOUT.has(key)) { layoutEditor(); clampCrop(); }
-    if (key === 'frameStyle') updateFrameUI();
+    if (key === 'frameStyle' || key === 'textMax' || key === 'nameBg') updateFrameUI();
     save();
     update();
   });
@@ -979,6 +1003,42 @@ $('resetSettings').addEventListener('click', () => {
   S = { ...DEFAULTS, text };
   save(); syncControls(); layoutEditor(); clampCrop(); update();
 });
+
+// ---------- Colour presets ----------
+// On the parchment, an outline in the same colour as the letters makes them bolder,
+// which reads better at 2.5 cm than a dark contour that fills the letter counters.
+const PRESETS = [
+  { name: 'Fuoco',     ink: '#8b1a0a', gem: '#c0151f', plain: ['#f08a24', '#2a1606'] },
+  { name: 'Inchiostro', ink: '#1c120a', gem: '#2a63c9', plain: ['#f3ead2', '#1c120a'] },
+  { name: 'Smeraldo',  ink: '#0f4a28', gem: '#16a34a', plain: ['#6fdc96', '#06210f'] },
+  { name: 'Arcano',    ink: '#4a1670', gem: '#9b3fe0', plain: ['#c99af2', '#1a0629'] },
+  { name: 'Ghiaccio',  ink: '#103d68', gem: '#3fb2ea', plain: ['#a8ddff', '#061a2b'] },
+  { name: 'Classico',  ink: '#e07a1f', gem: '#b3122a', plain: ['#e07a1f', '#2a1606'], inkStroke: ['#2a1606', 6] },
+];
+
+function applyPreset(p) {
+  Object.assign(S, {
+    parchTextColor: p.ink,
+    parchStrokeColor: p.inkStroke ? p.inkStroke[0] : p.ink,
+    parchStroke: p.inkStroke ? p.inkStroke[1] : 2.5,
+    textColor: p.plain[0], strokeColor: p.plain[1], stroke: 6,
+    gemColor: p.gem,
+  });
+  save(); syncControls(); update();
+}
+
+for (const p of PRESETS) {
+  const b = document.createElement('button');
+  b.className = 'preset';
+  b.title = p.name;
+  b.innerHTML = '<span class="sample">Aa</span><span class="gemdot"></span><span class="pname"></span>';
+  b.querySelector('.sample').style.color = p.ink;
+  if (p.inkStroke) b.querySelector('.sample').style.webkitTextStroke = `1px ${p.inkStroke[0]}`;
+  b.querySelector('.gemdot').style.background = p.gem;
+  b.querySelector('.pname').textContent = p.name;
+  b.onclick = () => applyPreset(p);
+  $('presets').append(b);
+}
 
 // ---------- Update loop ----------
 let previewPending = false;

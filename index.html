@@ -73,6 +73,14 @@
   #sheetList .item button { width: 26px; height: 26px; padding: 0; flex: none; }
   .muted { color: var(--muted); font-size: 12px; }
 
+  #presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .preset { flex-direction: column; gap: 2px; padding: 6px 4px; position: relative; }
+  .preset .sample {
+    font-family: "DisplayArtThree", serif; font-size: 22px; line-height: 1.1; width: 100%;
+    background: linear-gradient(#f6e8c3, #e3c98f); border-radius: 4px; padding: 2px 0;
+  }
+  .preset .gemdot { position: absolute; top: 3px; right: 3px; width: 10px; height: 10px; transform: rotate(45deg); border: 1px solid #0008; }
+  .preset .pname { font-size: 11px; color: var(--muted); }
   .credits { padding: 4px 20px 16px; text-align: center; color: var(--muted); font-size: 11px; }
   .credits a { color: var(--muted); }
   #printArea { display: none; }
@@ -99,6 +107,11 @@
   <!-- Left: text + image -->
   <section>
     <div class="panel">
+      <h2>Combinazioni colore</h2>
+      <div id="presets"></div>
+    </div>
+
+    <div class="panel">
       <h2>Testo</h2>
       <textarea id="text" rows="2" placeholder="Nome"></textarea>
       <div class="muted">Premi Invio per andare a capo</div>
@@ -108,9 +121,12 @@
           <option value="none">Nessuno</option>
         </select></div>
       <label class="check"><input id="uppercase" type="checkbox" checked> Tutto maiuscolo</label>
-      <label class="row">Dimensione <span class="val" id="textSizeVal"></span>
+      <label class="check"><input id="textMax" type="checkbox" checked> Testo il più grande possibile</label>
+      <label class="row" data-textmax="on">Altezza massima del nome <span class="val" id="textMaxHVal"></span>
+        <input id="textMaxH" type="range" min="10" max="90" step="1"></label>
+      <label class="row" data-textmax="off">Dimensione <span class="val" id="textSizeVal"></span>
         <input id="textSize" type="range" min="5" max="60" step="0.5"></label>
-      <label class="check"><input id="autoFit" type="checkbox" checked> Riduci per stare nel box</label>
+      <label class="check" data-textmax="off"><input id="autoFit" type="checkbox" checked> Riduci per stare nel box</label>
       <label class="check"><input id="autoWrap" type="checkbox" checked> A capo automatico se troppo lungo</label>
       <label class="row">Interlinea <span class="val" id="lineHeightVal"></span>
         <input id="lineHeight" type="range" min="60" max="160" step="1"></label>
@@ -118,12 +134,22 @@
         <input id="textY" type="range" min="0" max="100" step="0.5"></label>
       <label class="row">Spaziatura lettere <span class="val" id="letterSpacingVal"></span>
         <input id="letterSpacing" type="range" min="-5" max="30" step="0.5"></label>
-      <div class="grid2">
-        <div class="field">Colore testo <input id="textColor" type="color"></div>
-        <div class="field">Colore contorno <input id="strokeColor" type="color"></div>
+      <div data-namebg="none">
+        <div class="grid2">
+          <div class="field">Colore testo <input id="textColor" type="color"></div>
+          <div class="field">Colore contorno <input id="strokeColor" type="color"></div>
+        </div>
+        <label class="row">Spessore contorno <span class="val" id="strokeVal"></span>
+          <input id="stroke" type="range" min="0" max="20" step="0.5"></label>
       </div>
-      <label class="row">Spessore contorno <span class="val" id="strokeVal"></span>
-        <input id="stroke" type="range" min="0" max="20" step="0.5"></label>
+      <div data-namebg="parchment">
+        <div class="grid2">
+          <div class="field">Colore testo <input id="parchTextColor" type="color"></div>
+          <div class="field">Colore contorno <input id="parchStrokeColor" type="color"></div>
+        </div>
+        <label class="row">Spessore contorno <span class="val" id="parchStrokeVal"></span>
+          <input id="parchStroke" type="range" min="0" max="20" step="0.5"></label>
+      </div>
       <label class="check"><input id="textOnTop" type="checkbox"> Testo anche nel box sopra</label>
     </div>
 
