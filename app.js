@@ -109,73 +109,127 @@ function rng(seed) {
   return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 }
 
-// Scroll banner centred on (cx, cy): wavy parchment sheet with rolled ends.
-function drawParchment(ctx, cx, cy, pw, ph) {
-  const roll = Math.min(ph * 0.26, pw * 0.12);
-  const x0 = cx - pw / 2 + roll * 0.6, x1 = cx + pw / 2 - roll * 0.6;
+// Smooth pseudo-random wobble (sum of sines with seeded phases), t in [0, 1].
+function wobble(r, amp) {
+  const waves = [[1.5 + r() * 1.5, r() * 6.3, 0.6], [5 + r() * 3, r() * 6.3, 0.3], [13 + r() * 6, r() * 6.3, 0.1]];
+  return (t) => amp * waves.reduce((s, [f, ph, a]) => s + a * Math.sin(t * f * Math.PI * 2 + ph), 0);
+}
+
+// Scroll banner centred on (cx, cy). innerW × ph is the flat sheet where the text sits;
+// a curled roll of width rollW is added at each end, outside that area.
+function drawParchment(ctx, cx, cy, innerW, ph, rollW) {
+  const r = rng(7);
+  const sx0 = cx - innerW / 2 - rollW * 0.5, sx1 = cx + innerW / 2 + rollW * 0.5; // sheet runs under the rolls
   const top = cy - ph / 2, bot = cy + ph / 2;
-  const amp = ph * 0.035, waves = 2;
-  const edge = (y, dir) => (t) => y + dir * amp * Math.sin(t * Math.PI * 2 * waves);
+  const sag = ph * 0.06;                      // edges dip slightly towards the middle
+  const jTop = wobble(r, ph * 0.025), jBot = wobble(r, ph * 0.025);
+  const steps = 48;
+  const sheet = new Path2D();
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, x = sx0 + (sx1 - sx0) * t;
+    const y = top + sag * Math.sin(t * Math.PI) + jTop(t);
+    i ? sheet.lineTo(x, y) : sheet.moveTo(x, y);
+  }
+  for (let i = steps; i >= 0; i--) {
+    const t = i / steps, x = sx0 + (sx1 - sx0) * t;
+    sheet.lineTo(x, bot - sag * Math.sin(t * Math.PI) + jBot(t));
+  }
+  sheet.closePath();
 
-  const body = new Path2D();
-  const steps = 24;
-  const topY = edge(top, 1), botY = edge(bot, -1);
-  body.moveTo(x0, topY(0));
-  for (let i = 1; i <= steps; i++) body.lineTo(x0 + (x1 - x0) * i / steps, topY(i / steps));
-  for (let i = steps; i >= 0; i--) body.lineTo(x0 + (x1 - x0) * i / steps, botY(i / steps));
-  body.closePath();
-
-  ctx.save();
   // Drop shadow
-  ctx.shadowColor = 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = ph * 0.18;
-  ctx.shadowOffsetY = ph * 0.05;
-  ctx.fillStyle = '#d9bf86';
-  ctx.fill(body);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = ph * 0.2;
+  ctx.shadowOffsetY = ph * 0.06;
+  ctx.fillStyle = '#dcc48e';
+  ctx.fill(sheet);
   ctx.restore();
 
-  // Paper tone: light centre, darker burnt edges
   ctx.save();
-  ctx.clip(body);
-  const gr = ctx.createRadialGradient(cx, cy, ph * 0.1, cx, cy, Math.max(pw, ph) * 0.62);
-  gr.addColorStop(0, '#f6e8c3');
-  gr.addColorStop(0.6, '#e6cf98');
-  gr.addColorStop(1, '#b48a4c');
+  ctx.clip(sheet);
+  // Paper tone
+  const gr = ctx.createRadialGradient(cx, cy, ph * 0.1, cx, cy, Math.max(innerW, ph) * 0.65);
+  gr.addColorStop(0, '#fbf0d2');
+  gr.addColorStop(0.55, '#efdcab');
+  gr.addColorStop(1, '#cfa865');
   ctx.fillStyle = gr;
-  ctx.fillRect(cx - pw / 2, top - amp * 2, pw, ph + amp * 4);
+  ctx.fillRect(sx0, top - ph, sx1 - sx0, ph * 3);
+  // Fibres
+  for (let i = 0; i < 26; i++) {
+    const fy = top + r() * ph, fx = sx0 + r() * (sx1 - sx0), fl = innerW * (0.08 + r() * 0.2);
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(fx + fl / 2, fy + (r() - 0.5) * ph * 0.06, fx + fl, fy);
+    ctx.lineWidth = Math.max(0.5, ph * 0.008); ctx.strokeStyle = `rgba(140,95,40,${0.08 + r() * 0.1})`; ctx.stroke();
+  }
   // Stains
-  const r = rng(7);
-  for (let i = 0; i < 9; i++) {
-    const sx = x0 + r() * (x1 - x0), sy = top + r() * ph, sr = ph * (0.08 + r() * 0.2);
-    const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-    sg.addColorStop(0, 'rgba(120,80,30,0.16)');
-    sg.addColorStop(1, 'rgba(120,80,30,0)');
+  for (let i = 0; i < 8; i++) {
+    const x = sx0 + r() * (sx1 - sx0), y = top + r() * ph, sr = ph * (0.1 + r() * 0.25);
+    const sg = ctx.createRadialGradient(x, y, 0, x, y, sr);
+    sg.addColorStop(0, 'rgba(130,85,30,0.14)');
+    sg.addColorStop(1, 'rgba(130,85,30,0)');
     ctx.fillStyle = sg;
-    ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+    ctx.fillRect(x - sr, y - sr, sr * 2, sr * 2);
+  }
+  // Burnt edges: soft dark band along the outline
+  for (const [wRel, a] of [[0.22, 0.12], [0.12, 0.18], [0.05, 0.3]]) {
+    ctx.lineWidth = ph * wRel;
+    ctx.strokeStyle = `rgba(110,62,18,${a})`;
+    ctx.stroke(sheet);
+  }
+  // Shade where the sheet goes into the rolls
+  for (const [ex, dir] of [[sx0 + rollW * 0.5, 1], [sx1 - rollW * 0.5, -1]]) {
+    const sg = ctx.createLinearGradient(ex, 0, ex + dir * rollW * 0.9, 0);
+    sg.addColorStop(0, 'rgba(90,55,20,0.45)');
+    sg.addColorStop(1, 'rgba(90,55,20,0)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(Math.min(ex, ex + dir * rollW * 0.9), top - ph, rollW * 0.9, ph * 3);
   }
   ctx.restore();
-  ctx.lineWidth = Math.max(1, ph * 0.025);
-  ctx.strokeStyle = '#6b4a22';
-  ctx.stroke(body);
+  ctx.lineWidth = Math.max(1, ph * 0.022);
+  ctx.strokeStyle = '#6b431a';
+  ctx.stroke(sheet);
 
-  // Rolled ends
-  for (const ex of [x0, x1]) {
-    const rx = ex - roll / 2, ry = top - ph * 0.06, rh = ph * 1.12;
-    const rg = ctx.createLinearGradient(rx, 0, rx + roll, 0);
-    rg.addColorStop(0, '#8a6430');
-    rg.addColorStop(0.35, '#f1dfb2');
-    rg.addColorStop(0.7, '#c9a464');
-    rg.addColorStop(1, '#6e4c22');
-    ctx.beginPath();
-    ctx.roundRect(rx, ry, roll, rh, roll / 2);
+  // Curled ends: vertical cylinders, a bit taller than the sheet, with a spiral on top
+  const ch = ph * 1.16, ry = rollW * 0.24;
+  for (const ex of [sx0 + rollW * 0.5, sx1 - rollW * 0.5]) {
+    const x0 = ex - rollW / 2, x1 = ex + rollW / 2;
+    const y0 = cy - ch / 2 + ry, y1 = cy + ch / 2 - ry;
+    const body = new Path2D();
+    body.moveTo(x0, y0);
+    body.lineTo(x0, y1);
+    body.ellipse(ex, y1, rollW / 2, ry, 0, Math.PI, 0, true);
+    body.lineTo(x1, y0);
+    body.ellipse(ex, y0, rollW / 2, ry, 0, 0, Math.PI, true);
+    body.closePath();
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = ph * 0.12;
+    ctx.shadowOffsetY = ph * 0.04;
+    const rg = ctx.createLinearGradient(x0, 0, x1, 0);
+    rg.addColorStop(0, '#8d6129');
+    rg.addColorStop(0.3, '#f3e2b6');
+    rg.addColorStop(0.55, '#e2c68a');
+    rg.addColorStop(1, '#7a521f');
     ctx.fillStyle = rg;
+    ctx.fill(body);
+    ctx.restore();
+    ctx.lineWidth = Math.max(1, ph * 0.022);
+    ctx.strokeStyle = '#6b431a';
+    ctx.stroke(body);
+    // Top cap with the spiral of rolled paper
+    ctx.beginPath();
+    ctx.ellipse(ex, y0, rollW / 2, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#e9d29c';
     ctx.fill();
     ctx.stroke();
-    // Spiral hint at the curl
+    ctx.lineWidth = Math.max(0.6, ph * 0.014);
+    for (const k of [0.68, 0.4]) {
+      ctx.beginPath();
+      ctx.ellipse(ex + rollW * 0.06 * (1 - k), y0, rollW / 2 * k, ry * k, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.beginPath();
-    ctx.ellipse(ex, ry + roll * 0.5, roll * 0.22, roll * 0.16, 0, 0, Math.PI * 2);
-    ctx.ellipse(ex, ry + rh - roll * 0.5, roll * 0.22, roll * 0.16, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#6b4a22';
+    ctx.ellipse(ex + rollW * 0.05, y0, rollW * 0.07, ry * 0.25, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#5a3812';
     ctx.fill();
   }
 }
@@ -187,23 +241,38 @@ function drawText(ctx, w, h) {
   const paragraphs = text.split(/\r?\n/).map((p) => p.trim());
   const lh = S.lineHeight / 100;
   const scroll = S.nameBg === 'parchment';
-  let size = (S.textSize / 100) * w;
-  let lines, lw, widest, blockH, padX, padY;
+  const target = (S.textSize / 100) * w;
   // Shrink (if enabled) until every line fits the width and the block fits the height.
-  for (let i = 0; i < 60; i++) {
-    ctx.font = `${size}px "${FONT}"`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = `${(S.letterSpacing / 100) * size}px`;
-    lw = (S.stroke / 100) * size;
-    padX = scroll ? size * 0.42 : 0;
-    padY = scroll ? size * 0.28 : 0;
-    const maxW = (scroll ? w * 0.98 - 2 * padX : w * 0.94) - 2 * lw;
-    lines = S.autoWrap ? paragraphs.flatMap((p) => wrapParagraph(ctx, p, maxW)) : paragraphs;
-    widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-    blockH = (lines.length - 1) * size * lh + size + 2 * lw;
-    if (!S.autoFit) break;
-    if (widest <= maxW && blockH + 2 * padY <= h * 0.94) break;
-    size *= 0.95;
+  // With the parchment the text must stay on the flat sheet, between the two rolls.
+  const fit = (wrap) => {
+    let size = target, f;
+    for (let i = 0; i < 60; i++) {
+      ctx.font = `${size}px "${FONT}"`;
+      if ('letterSpacing' in ctx) ctx.letterSpacing = `${(S.letterSpacing / 100) * size}px`;
+      const lw = (S.stroke / 100) * size;
+      const rollW = scroll ? size * 0.42 : 0, marginX = scroll ? size * 0.18 : 0, padY = scroll ? size * 0.32 : 0;
+      const maxW = (scroll ? w * 0.98 - 2 * rollW - 2 * marginX : w * 0.94) - 2 * lw;
+      const lines = wrap ? paragraphs.flatMap((p) => wrapParagraph(ctx, p, maxW)) : paragraphs;
+      const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      const blockH = (lines.length - 1) * size * lh + size + 2 * lw;
+      f = { size, lw, rollW, marginX, padY, lines, widest, blockH };
+      if (!S.autoFit) break;
+      const totalH = scroll ? (blockH + 2 * padY) * 1.2 : blockH;
+      if (widest <= maxW && totalH <= h * 0.94) break;
+      size *= 0.95;
+    }
+    return f;
+  };
+  // Keep the user's own line breaks when that only costs a little shrinking; wrap otherwise.
+  let best = fit(false);
+  if (S.autoWrap && !S.autoFit) best = fit(true);
+  else if (S.autoWrap && best.size < target * 0.75) {
+    const wrapped = fit(true);
+    if (wrapped.size > best.size) best = wrapped;
   }
+  const { size, lw, rollW, marginX, padY, lines, widest, blockH } = best;
+  ctx.font = `${size}px "${FONT}"`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${(S.letterSpacing / 100) * size}px`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const x = w / 2;
@@ -211,10 +280,7 @@ function drawText(ctx, w, h) {
   const cy = (S.textY / 100) * h;
   const y0 = cy - ((lines.length - 1) * step) / 2;
   // The parchment is sized and placed from the text block, so it follows the name.
-  if (scroll) {
-    const pw = Math.min(w * 0.98, widest + 2 * lw + 2 * padX);
-    drawParchment(ctx, x, cy, pw, blockH + 2 * padY);
-  }
+  if (scroll) drawParchment(ctx, x, cy, widest + 2 * lw + 2 * marginX, blockH + 2 * padY, rollW);
   // Strokes first, then fills, so a line's outline never covers the line above.
   if (lw > 0) {
     ctx.lineJoin = 'round';
