@@ -327,6 +327,7 @@ const FANTASY = {
   gold:   { dark: '#3d2508', mid: '#b07f26', light: '#f7df92' },
   silver: { dark: '#24282e', mid: '#8e98a3', light: '#f4f7fa' },
   bronze: { dark: '#331a0a', mid: '#94542a', light: '#e8ae78' },
+  monster: { dark: '#0b0807', mid: '#2e2522', light: '#6e5f57' },
 };
 const WOOD = {
   wood:  { dark: '#2a1407', base: '#6e3f1c', light: '#9c6534', grain: '40,18,4' },
@@ -411,7 +412,154 @@ function frameShadow(ctx, x, y, w, h, t) {
 
 function drawFrame(ctx, x, y, w, h, t) {
   if (WOOD[S.frameStyle]) drawWoodFrame(ctx, x, y, w, h, t);
+  else if (S.frameStyle === 'monster') drawMonsterFrame(ctx, x, y, w, h, t);
   else drawFantasyFrame(ctx, x, y, w, h, t);
+}
+
+// The four sides of rect (x, y, w, h): start point, direction along the side, inward normal.
+function rectSides(x, y, w, h) {
+  return [
+    { ax: x, ay: y, dx: 1, dy: 0, nx: 0, ny: 1, len: w },          // top
+    { ax: x, ay: y + h, dx: 1, dy: 0, nx: 0, ny: -1, len: w },     // bottom
+    { ax: x, ay: y, dx: 0, dy: 1, nx: 1, ny: 0, len: h },          // left
+    { ax: x + w, ay: y, dx: 0, dy: 1, nx: -1, ny: 0, len: h },     // right
+  ];
+}
+
+function skull(ctx, cx, cy, s, eyeColor) {
+  const bone = ctx.createRadialGradient(cx - s * 0.2, cy - s * 0.35, s * 0.05, cx, cy, s * 0.9);
+  bone.addColorStop(0, '#f3ead3'); bone.addColorStop(0.55, '#c2b391'); bone.addColorStop(1, '#5e4f38');
+  const head = new Path2D();
+  head.arc(cx, cy - s * 0.12, s * 0.6, 0, Math.PI * 2);
+  head.roundRect(cx - s * 0.34, cy + s * 0.12, s * 0.68, s * 0.46, s * 0.12);
+  ctx.fillStyle = bone; ctx.fill(head);
+  ctx.lineWidth = s * 0.07; ctx.strokeStyle = '#1b120c'; ctx.stroke(head);
+  // Eye sockets with a glow
+  for (const ex of [cx - s * 0.24, cx + s * 0.24]) {
+    ctx.beginPath(); ctx.ellipse(ex, cy - s * 0.06, s * 0.17, s * 0.19, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#100605'; ctx.fill();
+    ctx.save();
+    ctx.shadowColor = eyeColor; ctx.shadowBlur = s * 0.5;
+    ctx.beginPath(); ctx.arc(ex, cy - s * 0.04, s * 0.07, 0, Math.PI * 2);
+    ctx.fillStyle = eyeColor; ctx.fill();
+    ctx.restore();
+  }
+  // Nose and teeth
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.1); ctx.lineTo(cx - s * 0.08, cy + s * 0.26); ctx.lineTo(cx + s * 0.08, cy + s * 0.26); ctx.closePath();
+  ctx.fillStyle = '#100605'; ctx.fill();
+  ctx.beginPath();
+  for (let i = -2; i <= 2; i++) { ctx.moveTo(cx + i * s * 0.12, cy + s * 0.36); ctx.lineTo(cx + i * s * 0.12, cy + s * 0.56); }
+  ctx.moveTo(cx - s * 0.3, cy + s * 0.36); ctx.lineTo(cx + s * 0.3, cy + s * 0.36);
+  ctx.lineWidth = s * 0.05; ctx.stroke();
+}
+
+function demonEye(ctx, cx, cy, rx, ry, color) {
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx * 1.15, ry * 1.25, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#0b0605'; ctx.fill();
+  ctx.shadowColor = color; ctx.shadowBlur = rx * 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - rx, cy); ctx.quadraticCurveTo(cx, cy - ry * 2, cx + rx, cy); ctx.quadraticCurveTo(cx, cy + ry * 2, cx - rx, cy);
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+  g.addColorStop(0, '#fff3c4'); g.addColorStop(0.35, color); g.addColorStop(1, '#2a0302');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.restore();
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.16, ry * 0.85, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#000'; ctx.fill();
+}
+
+// Monster frame: charred iron, a thorny vine, fangs biting into the picture, skulls and glowing eyes.
+function drawMonsterFrame(ctx, x, y, w, h, t) {
+  const p = FANTASY.monster;
+  const rect = (d) => ({ x: x - d, y: y - d, w: w + 2 * d, h: h + 2 * d });
+  const outer = rect(t), mid = rect(t * 0.5), inner = rect(0);
+  const r = rng(13);
+  ctx.save();
+  frameShadow(ctx, x, y, w, h, t);
+
+  // Charred iron body
+  bandPath(ctx, outer, inner);
+  ctx.fillStyle = metalGradient(ctx, outer.x, outer.y, outer.x + outer.w, outer.y + outer.h, p, 7);
+  ctx.fill('evenodd');
+  bevel(ctx, outer, mid, 'rgba(255,255,255,0.14)', 'rgba(0,0,0,0.5)');
+  bevel(ctx, mid, inner, 'rgba(0,0,0,0.45)', 'rgba(255,255,255,0.1)');
+
+  // Rust / dried blood stains and cracks, kept on the frame band
+  ctx.save();
+  bandPath(ctx, outer, inner);
+  ctx.clip('evenodd');
+  const perim = 2 * (outer.w + outer.h);
+  for (let i = 0; i < perim / t * 1.5; i++) {
+    const side = rectSides(outer.x, outer.y, outer.w, outer.h)[i % 4];
+    const along = r() * side.len, depth = r() * t;
+    const sx = side.ax + side.dx * along + side.nx * depth, sy = side.ay + side.dy * along + side.ny * depth;
+    const sr = t * (0.15 + r() * 0.35);
+    const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+    g.addColorStop(0, `rgba(${r() < 0.5 ? '110,18,10' : '120,60,20'},0.45)`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+  }
+  ctx.restore();
+  ctx.lineWidth = t * 0.08; ctx.strokeStyle = '#050303';
+  ctx.strokeRect(outer.x + t * 0.04, outer.y + t * 0.04, outer.w - t * 0.08, outer.h - t * 0.08);
+
+  // Thorny vine along the middle of the band
+  const c0 = t * 1.25; // keep clear of the corner skulls
+  ctx.lineCap = 'round';
+  for (const sd of rectSides(mid.x, mid.y, mid.w, mid.h)) {
+    const pt = (a, n = 0) => [sd.ax + sd.dx * a + sd.nx * n, sd.ay + sd.dy * a + sd.ny * n];
+    ctx.beginPath();
+    for (let a = c0 * 0.6; a <= sd.len - c0 * 0.6; a += t * 0.2) {
+      const [px, py] = pt(a, Math.sin(a / t * 2.2) * t * 0.08);
+      a === c0 * 0.6 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.lineWidth = t * 0.11; ctx.strokeStyle = '#0a0605'; ctx.stroke();
+    ctx.lineWidth = t * 0.035; ctx.strokeStyle = 'rgba(160,130,110,0.5)'; ctx.stroke();
+    let k = 0;
+    for (let a = c0; a < sd.len - c0; a += t * 0.55, k++) {
+      const dir = k % 2 ? 1 : -1, n0 = Math.sin(a / t * 2.2) * t * 0.08;
+      const [bx1, by1] = pt(a - t * 0.07, n0), [bx2, by2] = pt(a + t * 0.07, n0), [tx, ty] = pt(a + t * 0.12, n0 + dir * t * 0.3);
+      ctx.beginPath(); ctx.moveTo(bx1, by1); ctx.lineTo(tx, ty); ctx.lineTo(bx2, by2); ctx.closePath();
+      ctx.fillStyle = '#0a0605'; ctx.fill();
+    }
+  }
+
+  // Fangs biting into the picture
+  for (const sd of rectSides(x, y, w, h)) {
+    const n = Math.max(2, Math.round((sd.len - 2 * c0) / (t * 1.0)));
+    for (let i = 0; i <= n; i++) {
+      const a = c0 + (sd.len - 2 * c0) * i / n;
+      const fl = t * (0.32 + r() * 0.18), fw = t * (0.22 + r() * 0.08);
+      const bx = sd.ax + sd.dx * a, by = sd.ay + sd.dy * a;
+      ctx.beginPath();
+      ctx.moveTo(bx - sd.dx * fw / 2, by - sd.dy * fw / 2);
+      ctx.quadraticCurveTo(bx + sd.nx * fl * 0.6 - sd.dx * fw * 0.1, by + sd.ny * fl * 0.6 - sd.dy * fw * 0.1, bx + sd.nx * fl, by + sd.ny * fl);
+      ctx.quadraticCurveTo(bx + sd.nx * fl * 0.5 + sd.dx * fw * 0.35, by + sd.ny * fl * 0.5 + sd.dy * fw * 0.35, bx + sd.dx * fw / 2, by + sd.dy * fw / 2);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(bx, by, bx + sd.nx * fl, by + sd.ny * fl);
+      g.addColorStop(0, '#9c8d70'); g.addColorStop(0.4, '#efe6cf'); g.addColorStop(1, '#d9ccae');
+      ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = t * 0.035; ctx.strokeStyle = '#1b120c'; ctx.stroke();
+    }
+  }
+  ctx.lineWidth = t * 0.08; ctx.strokeStyle = '#050303';
+  ctx.strokeRect(x - t * 0.04, y - t * 0.04, w + t * 0.08, h + t * 0.08);
+
+  // Glowing eyes in the middle of each side
+  for (const sd of rectSides(mid.x, mid.y, mid.w, mid.h)) {
+    const cx = sd.ax + sd.dx * sd.len / 2, cy = sd.ay + sd.dy * sd.len / 2;
+    demonEye(ctx, cx, cy, t * 0.3, t * 0.14, S.gemColor);
+  }
+
+  // Corner skulls
+  const sc = t * 0.55;
+  for (const [cx, cy] of [[outer.x + sc, outer.y + sc], [outer.x + outer.w - sc, outer.y + sc],
+                          [outer.x + sc, outer.y + outer.h - sc], [outer.x + outer.w - sc, outer.y + outer.h - sc]]) {
+    skull(ctx, cx, cy, t * 0.75, S.gemColor);
+  }
+  ctx.restore();
 }
 
 // Mitred wooden frame: four planks with grain along their length and a rounded profile.
@@ -1026,6 +1174,7 @@ const PRESETS = [
   { name: 'Smeraldo',  ink: '#0f4a28', gem: '#16a34a', plain: ['#6fdc96', '#06210f'] },
   { name: 'Arcano',    ink: '#4a1670', gem: '#9b3fe0', plain: ['#c99af2', '#1a0629'] },
   { name: 'Ghiaccio',  ink: '#103d68', gem: '#3fb2ea', plain: ['#a8ddff', '#061a2b'] },
+  { name: 'Sangue',    ink: '#5c0707', gem: '#ff2a12', plain: ['#e0301e', '#140303'] },
   { name: 'Classico',  ink: '#e07a1f', gem: '#b3122a', plain: ['#e07a1f', '#2a1606'], inkStroke: ['#2a1606', 6] },
 ];
 
