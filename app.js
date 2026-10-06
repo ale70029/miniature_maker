@@ -965,7 +965,7 @@ function syncControls() {
   updateFrameUI();
 }
 
-// Show only the options relevant to the current frame style and text size mode.
+// Show only the options relevant to the current choices and highlight the card size.
 function updateFrameUI() {
   document.querySelectorAll('[data-frame]').forEach((el) => {
     const f = el.dataset.frame;
@@ -977,7 +977,19 @@ function updateFrameUI() {
   document.querySelectorAll('[data-namebg]').forEach((el) => {
     el.hidden = el.dataset.namebg !== S.nameBg;
   });
+  document.querySelectorAll('#sizes button').forEach((b) => {
+    b.classList.toggle('active', +b.dataset.w === S.boxW && +b.dataset.h === S.boxH);
+  });
 }
+
+// Card sizes: same layout, wider (1, 2 or 3 squares) and a bit taller.
+document.querySelectorAll('#sizes button').forEach((b) => {
+  b.addEventListener('click', () => {
+    S.boxW = +b.dataset.w;
+    S.boxH = +b.dataset.h;
+    save(); syncControls(); layoutEditor(); clampCrop(); update();
+  });
+});
 
 for (const key of Object.keys(DEFAULTS)) {
   const el = $(key);
@@ -992,13 +1004,14 @@ for (const key of Object.keys(DEFAULTS)) {
     S[key] = v;
     if (fmt[key]) $(key + 'Val').textContent = fmt[key](v);
     if (LAYOUT.has(key)) { layoutEditor(); clampCrop(); }
-    if (key === 'frameStyle' || key === 'textMax' || key === 'nameBg') updateFrameUI();
+    updateFrameUI();
     save();
     update();
   });
 }
 
 $('resetSettings').addEventListener('click', () => {
+  if (!confirm('Riportare tutte le impostazioni ai valori iniziali? Il nome resta.')) return;
   const text = S.text;
   S = { ...DEFAULTS, text };
   save(); syncControls(); layoutEditor(); clampCrop(); update();

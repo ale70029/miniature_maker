@@ -15,6 +15,7 @@
   header h1 { margin: 0; font-size: 18px; font-weight: 600; }
   header h1 span { font-family: "DisplayArtThree", serif; color: var(--accent); font-weight: normal; font-size: 22px; letter-spacing: 1px; }
   header .spacer { flex: 1; }
+  header button, header .btn { white-space: nowrap; }
   main { display: grid; grid-template-columns: 300px 1fr 300px; gap: 16px; padding: 16px; align-items: start; }
   @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
@@ -73,6 +74,10 @@
   #sheetList .item button { width: 26px; height: 26px; padding: 0; flex: none; }
   .muted { color: var(--muted); font-size: 12px; }
 
+  .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; max-width: 460px; }
+  .segmented button { flex-direction: column; gap: 0; padding: 6px 4px; }
+  .segmented small { font-size: 11px; color: var(--muted); }
+  .segmented button.active { border-color: var(--accent); background: #3a2a1a; }
   #presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .preset { flex-direction: column; gap: 2px; padding: 6px 4px; position: relative; }
   .preset .sample {
@@ -99,6 +104,7 @@
 <header>
   <h1><span>Miniature</span> Maker</h1>
   <div class="spacer"></div>
+  <button id="resetSettings" title="Riporta tutte le impostazioni ai valori iniziali (il nome resta)">Ripristina predefiniti</button>
   <label class="btn" for="file">Carica immagine…</label>
   <input id="file" type="file" accept="image/*" hidden>
 </header>
@@ -182,6 +188,11 @@
 
   <!-- Center: crop editor -->
   <section class="stage">
+    <div id="sizes" class="segmented">
+      <button data-w="25" data-h="50">Normale<small>2,5 × 5 cm</small></button>
+      <button data-w="50" data-h="60">Media<small>5 × 6 cm</small></button>
+      <button data-w="75" data-h="70">Grande<small>7,5 × 7 cm</small></button>
+    </div>
     <div id="editorWrap">
       <canvas id="editor"></canvas>
       <div id="dropHint">
@@ -238,7 +249,6 @@
         <div class="field">Risoluzione (DPI)
           <select id="dpi"><option>150</option><option>300</option><option>600</option></select></div>
       </div>
-      <div class="btns full"><button id="resetSettings">Ripristina predefiniti</button></div>
     </div>
   </section>
 </main>
